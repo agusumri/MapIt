@@ -66,6 +66,10 @@ namespace MapIt
             if (pm.UseDestinationValue == true) return false;
             if (pm.ValueTransformers != null && pm.ValueTransformers.Count > 0) return false;
             if (pm.AllowNull.HasValue) return false;
+            // AllowNullDestinationValues = false turns null strings/objects into empty values,
+            // which only the interpreter does.
+            if (pm.TypeMap?.Profile != null && !pm.TypeMap.Profile.AllowNullDestinationValues
+                && pm.DestinationType != null && !pm.DestinationType.IsValueType) return false;
             if (!pm.CanBeSet) return false;
             if (pm.DestinationMember == null) return false;
             // Exactly one source member (field/property), no deep chain, no method/extension.

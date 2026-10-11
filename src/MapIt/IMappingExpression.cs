@@ -24,7 +24,7 @@ namespace MapIt
         TMappingExpression BeforeMap(Action<TSource, TDestination, ResolutionContext> beforeFunction);
 
         /// <summary>Registers a before-map action of a type.</summary>
-        TMappingExpression BeforeMap<TMappingAction>() where TMappingAction : IMappingAction<TSource, TDestination>, new();
+        TMappingExpression BeforeMap<TMappingAction>() where TMappingAction : IMappingAction<TSource, TDestination>;
 
         /// <summary>Registers an after-map action.</summary>
         TMappingExpression AfterMap(Action<TSource, TDestination> afterFunction);
@@ -33,7 +33,7 @@ namespace MapIt
         TMappingExpression AfterMap(Action<TSource, TDestination, ResolutionContext> afterFunction);
 
         /// <summary>Registers an after-map action of a type.</summary>
-        TMappingExpression AfterMap<TMappingAction>() where TMappingAction : IMappingAction<TSource, TDestination>, new();
+        TMappingExpression AfterMap<TMappingAction>() where TMappingAction : IMappingAction<TSource, TDestination>;
 
         /// <summary>Specifies that the map produces a proxy.</summary>
         TMappingExpression AsProxy();
@@ -63,6 +63,9 @@ namespace MapIt
         void ConvertUsing(ITypeConverter<TSource, TDestination> converter);
 
         /// <summary>Uses a mapping function for the whole map.</summary>
+        void ConvertUsing(Func<TSource, TDestination> mappingFunction);
+
+        /// <summary>Uses a mapping function for the whole map (also receives the existing destination).</summary>
         void ConvertUsing(Func<TSource, TDestination, TDestination> mappingFunction);
 
         /// <summary>Uses a mapping function with context for the whole map.</summary>
@@ -72,7 +75,7 @@ namespace MapIt
         void ConvertUsing(Type typeConverterType);
 
         /// <summary>Uses a typed type converter.</summary>
-        void ConvertUsing<TTypeConverter>() where TTypeConverter : ITypeConverter<TSource, TDestination>, new();
+        void ConvertUsing<TTypeConverter>() where TTypeConverter : ITypeConverter<TSource, TDestination>;
 
         /// <summary>Configures a constructor parameter.</summary>
         TMappingExpression ForCtorParam(string ctorParamName, Action<ICtorParamConfigurationExpression<TSource>> paramOptions);

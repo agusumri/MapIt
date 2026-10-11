@@ -121,25 +121,25 @@ namespace MapIt
         }
 
         /// <inheritdoc />
-        public void RecognizeDestinationPostfixes(string[] postfixes)
+        public void RecognizeDestinationPostfixes(params string[] postfixes)
         {
             if (postfixes != null) DestinationPostfixes.AddRange(postfixes);
         }
 
         /// <inheritdoc />
-        public void RecognizeDestinationPrefixes(string[] prefixes)
+        public void RecognizeDestinationPrefixes(params string[] prefixes)
         {
             if (prefixes != null) DestinationPrefixes.AddRange(prefixes);
         }
 
         /// <inheritdoc />
-        public void RecognizePostfixes(string[] postfixes)
+        public void RecognizePostfixes(params string[] postfixes)
         {
             if (postfixes != null) SourcePostfixes.AddRange(postfixes);
         }
 
         /// <inheritdoc />
-        public void RecognizePrefixes(string[] prefixes)
+        public void RecognizePrefixes(params string[] prefixes)
         {
             if (prefixes != null) SourcePrefixes.AddRange(prefixes);
         }

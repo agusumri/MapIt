@@ -17,7 +17,16 @@ namespace MapIt
         public MapItMappingException(string message) : base(message) { }
 
         /// <summary>Creates a new mapping exception wrapping an inner exception.</summary>
-        public MapItMappingException(string message, Exception innerException) : base(message, innerException) { }
+        public MapItMappingException(string message, Exception innerException) : base(message, Unwrap(innerException)) { }
+
+        // Reflection/DynamicInvoke wrap user exceptions in TargetInvocationException; callers should
+        // see their own exception as InnerException.
+        private static Exception Unwrap(Exception ex)
+        {
+            while (ex is System.Reflection.TargetInvocationException tie && tie.InnerException != null)
+                ex = tie.InnerException;
+            return ex;
+        }
 
         /// <summary>Gets or sets the member map that failed, if any.</summary>
         public MemberMap MemberMap { get; set; }

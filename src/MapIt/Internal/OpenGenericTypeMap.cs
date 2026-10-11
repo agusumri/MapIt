@@ -55,6 +55,8 @@ namespace MapIt
         public Type ResolverType { get; set; }
         public Type ConverterType { get; set; }
         public object NullSubstitute { get; set; }
+        public bool? AllowNull { get; set; }
+        public bool ExplicitExpansion { get; set; }
         public bool? UseDestinationValue { get; set; }
         public int? MappingOrder { get; set; }
     }

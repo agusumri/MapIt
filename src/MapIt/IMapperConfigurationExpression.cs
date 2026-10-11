@@ -57,6 +57,12 @@ namespace MapIt
 
         /// <summary>Registers a cross-cutting mapping interceptor.</summary>
         void AddInterceptor(IMappingInterceptor interceptor);
+
+        /// <summary>
+        /// Adds a custom validation rule, run for every type map by <c>AssertConfigurationIsValid</c>.
+        /// Throw from the callback to report a problem.
+        /// </summary>
+        void Validator(Action<ValidationContext> validator);
     }
 
     /// <summary>
@@ -115,9 +121,6 @@ namespace MapIt
     /// </summary>
     public interface IGlobalConfigurationExpression : IMapperConfigurationExpression
     {
-        /// <summary>Adds a validator.</summary>
-        void Validator(Action<ValidationContext> validator);
-
         /// <summary>Gets the profiles.</summary>
         IReadOnlyCollection<IProfileConfiguration> Profiles { get; }
 

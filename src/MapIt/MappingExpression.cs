@@ -112,9 +112,9 @@ namespace MapIt
         }
 
         /// <inheritdoc />
-        public IMappingExpression BeforeMap<TMappingAction>() where TMappingAction : IMappingAction<object, object>, new()
+        public IMappingExpression BeforeMap<TMappingAction>() where TMappingAction : IMappingAction<object, object>
         {
-            TypeMap.AddBeforeMapAction(new MapAction { Action = (s, d, ctx) => new TMappingAction().Process((object)s, (object)d, ctx) });
+            TypeMap.AddBeforeMapAction(new MapAction { Action = (s, d, ctx) => MapIt.Internal.ServiceFactory.Create<TMappingAction>(ctx).Process((object)s, (object)d, ctx) });
             return this;
         }
 
@@ -133,9 +133,9 @@ namespace MapIt
         }
 
         /// <inheritdoc />
-        public IMappingExpression AfterMap<TMappingAction>() where TMappingAction : IMappingAction<object, object>, new()
+        public IMappingExpression AfterMap<TMappingAction>() where TMappingAction : IMappingAction<object, object>
         {
-            TypeMap.AddAfterMapAction(new MapAction { Action = (s, d, ctx) => new TMappingAction().Process((object)s, (object)d, ctx) });
+            TypeMap.AddAfterMapAction(new MapAction { Action = (s, d, ctx) => MapIt.Internal.ServiceFactory.Create<TMappingAction>(ctx).Process((object)s, (object)d, ctx) });
             return this;
         }
 
@@ -209,6 +209,12 @@ namespace MapIt
         }
 
         /// <inheritdoc />
+        public void ConvertUsing(Func<object, object> mappingFunction)
+        {
+            TypeMap.TypeConverter = new TypeConverter { Convert = (s, d, ctx) => mappingFunction(s) };
+        }
+
+        /// <inheritdoc />
         public void ConvertUsing(Func<object, object, object> mappingFunction)
         {
             TypeMap.TypeConverter = new TypeConverter { Convert = (s, d, ctx) => mappingFunction((object)s, (object)d) };
@@ -225,15 +231,15 @@ namespace MapIt
         {
             TypeMap.TypeConverter = new TypeConverter { Convert = (s, d, ctx) =>
             {
-                var converter = (ITypeConverter<object, object>)Activator.CreateInstance(typeConverterType);
+                var converter = (ITypeConverter<object, object>)MapIt.Internal.ServiceFactory.Create(typeConverterType, ctx);
                 return converter.Convert(s, d, ctx);
             } };
         }
 
         /// <inheritdoc />
-        public void ConvertUsing<TTypeConverter>() where TTypeConverter : ITypeConverter<object, object>, new()
+        public void ConvertUsing<TTypeConverter>() where TTypeConverter : ITypeConverter<object, object>
         {
-            TypeMap.TypeConverter = new TypeConverter { Convert = (s, d, ctx) => new TTypeConverter().Convert(s, d, ctx) };
+            TypeMap.TypeConverter = new TypeConverter { Convert = (s, d, ctx) => MapIt.Internal.ServiceFactory.Create<TTypeConverter>(ctx).Convert(s, d, ctx) };
         }
 
         /// <inheritdoc />
@@ -427,10 +433,8 @@ namespace MapIt
         /// <inheritdoc />
         public IMappingExpression<TSource, TDestination> Include<TOtherSource, TOtherDestination>() where TOtherSource : TSource where TOtherDestination : TDestination
         {
+            // A missing derived map is created at seal time, so declaring it explicitly is not a duplicate.
             TypeMap.IncludedDerivedTypes.Add(new TypePair(typeof(TOtherSource), typeof(TOtherDestination)));
-            // Ensure a map exists for the derived pair so dispatch finds it.
-            if (!Profile.TypeMaps.Any(t => t.SourceType == typeof(TOtherSource) && t.DestinationType == typeof(TOtherDestination)))
-                Profile.CreateMap(typeof(TOtherSource), typeof(TOtherDestination));
             return this;
         }
 
@@ -554,9 +558,9 @@ namespace MapIt
         }
 
         /// <inheritdoc />
-        public IMappingExpression<TSource, TDestination> BeforeMap<TMappingAction>() where TMappingAction : IMappingAction<TSource, TDestination>, new()
+        public IMappingExpression<TSource, TDestination> BeforeMap<TMappingAction>() where TMappingAction : IMappingAction<TSource, TDestination>
         {
-            TypeMap.AddBeforeMapAction(new MapAction { Action = (s, d, ctx) => new TMappingAction().Process((TSource)s, (TDestination)d, ctx) });
+            TypeMap.AddBeforeMapAction(new MapAction { Action = (s, d, ctx) => MapIt.Internal.ServiceFactory.Create<TMappingAction>(ctx).Process((TSource)s, (TDestination)d, ctx) });
             return this;
         }
 
@@ -575,9 +579,9 @@ namespace MapIt
         }
 
         /// <inheritdoc />
-        public IMappingExpression<TSource, TDestination> AfterMap<TMappingAction>() where TMappingAction : IMappingAction<TSource, TDestination>, new()
+        public IMappingExpression<TSource, TDestination> AfterMap<TMappingAction>() where TMappingAction : IMappingAction<TSource, TDestination>
         {
-            TypeMap.AddAfterMapAction(new MapAction { Action = (s, d, ctx) => new TMappingAction().Process((TSource)s, (TDestination)d, ctx) });
+            TypeMap.AddAfterMapAction(new MapAction { Action = (s, d, ctx) => MapIt.Internal.ServiceFactory.Create<TMappingAction>(ctx).Process((TSource)s, (TDestination)d, ctx) });
             return this;
         }
 
@@ -640,6 +644,12 @@ namespace MapIt
         }
 
         /// <inheritdoc />
+        public void ConvertUsing(Func<TSource, TDestination> mappingFunction)
+        {
+            TypeMap.TypeConverter = new TypeConverter { Convert = (s, d, ctx) => mappingFunction((TSource)s) };
+        }
+
+        /// <inheritdoc />
         public void ConvertUsing(Func<TSource, TDestination, TDestination> mappingFunction)
         {
             TypeMap.TypeConverter = new TypeConverter { Convert = (s, d, ctx) => mappingFunction((TSource)s, (TDestination)d) };
@@ -656,15 +666,15 @@ namespace MapIt
         {
             TypeMap.TypeConverter = new TypeConverter { Convert = (s, d, ctx) =>
             {
-                var converter = (ITypeConverter<TSource, TDestination>)Activator.CreateInstance(typeConverterType);
+                var converter = (ITypeConverter<TSource, TDestination>)MapIt.Internal.ServiceFactory.Create(typeConverterType, ctx);
                 return converter.Convert((TSource)s, (TDestination)d, ctx);
             } };
         }
 
         /// <inheritdoc />
-        public void ConvertUsing<TTypeConverter>() where TTypeConverter : ITypeConverter<TSource, TDestination>, new()
+        public void ConvertUsing<TTypeConverter>() where TTypeConverter : ITypeConverter<TSource, TDestination>
         {
-            TypeMap.TypeConverter = new TypeConverter { Convert = (s, d, ctx) => new TTypeConverter().Convert((TSource)s, (TDestination)d, ctx) };
+            TypeMap.TypeConverter = new TypeConverter { Convert = (s, d, ctx) => MapIt.Internal.ServiceFactory.Create<TTypeConverter>(ctx).Convert((TSource)s, (TDestination)d, ctx) };
         }
 
         /// <inheritdoc />

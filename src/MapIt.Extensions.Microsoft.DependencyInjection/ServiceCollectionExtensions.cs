@@ -29,15 +29,35 @@ namespace MapIt.Extensions.Microsoft.DependencyInjection
             // Config is sealed in the constructor; no warm-up CreateMapper() needed.
             var configuration = new MapperConfiguration(configAction);
             services.TryAddSingleton<IConfigurationProvider>(configuration);
-            services.TryAddSingleton<Mapper>(sp => (Mapper)configuration.CreateMapper());
             AddMapperWithLifetime(services, mapperLifetime);
             return services;
         }
 
+        /// <summary>
+        /// Registers the mapper. Resolvers, converters and mapping actions referenced by type are
+        /// created through the container (constructor injection), falling back to
+        /// <see cref="ActivatorUtilities"/> for types that are not registered.
+        /// A scoped or transient mapper resolves those services from the current scope.
+        /// </summary>
         private static void AddMapperWithLifetime(IServiceCollection services, ServiceLifetime lifetime)
         {
-            services.TryAdd(new ServiceDescriptor(typeof(IMapper), sp => sp.GetRequiredService<Mapper>(), lifetime));
-            services.TryAdd(new ServiceDescriptor(typeof(IRuntimeMapper), sp => sp.GetRequiredService<Mapper>(), lifetime));
+            services.TryAddSingleton<Mapper>(sp => CreateMapper(sp));
+            if (lifetime == ServiceLifetime.Singleton)
+            {
+                services.TryAdd(new ServiceDescriptor(typeof(IMapper), sp => sp.GetRequiredService<Mapper>(), lifetime));
+                services.TryAdd(new ServiceDescriptor(typeof(IRuntimeMapper), sp => sp.GetRequiredService<Mapper>(), lifetime));
+            }
+            else
+            {
+                services.TryAdd(new ServiceDescriptor(typeof(IMapper), sp => CreateMapper(sp), lifetime));
+                services.TryAdd(new ServiceDescriptor(typeof(IRuntimeMapper), sp => (IRuntimeMapper)sp.GetRequiredService<IMapper>(), lifetime));
+            }
+        }
+
+        private static Mapper CreateMapper(IServiceProvider sp)
+        {
+            var configuration = (MapperConfiguration)sp.GetRequiredService<IConfigurationProvider>();
+            return (Mapper)configuration.CreateMapper(type => sp.GetService(type) ?? ActivatorUtilities.CreateInstance(sp, type));
         }
 
         /// <summary>
@@ -52,11 +72,6 @@ namespace MapIt.Extensions.Microsoft.DependencyInjection
                 var config = new MapperConfigurationExpression();
                 configAction(sp, config);
                 return new MapperConfiguration(config);
-            });
-            services.TryAddSingleton<Mapper>(sp =>
-            {
-                var config = (MapperConfiguration)sp.GetRequiredService<IConfigurationProvider>();
-                return (Mapper)config.CreateMapper();
             });
             AddMapperWithLifetime(services, ServiceLifetime.Singleton);
             return services;
@@ -129,7 +144,7 @@ namespace MapIt.Extensions.Microsoft.DependencyInjection
         /// </summary>
         public static IServiceCollection AddMapIt(
             this IServiceCollection services,
-            Assembly[] assemblies)
+            params Assembly[] assemblies)
         {
             return services.AddMapIt(config => config.AddMaps(assemblies));
         }
@@ -139,7 +154,7 @@ namespace MapIt.Extensions.Microsoft.DependencyInjection
         /// </summary>
         public static IServiceCollection AddMapIt(
             this IServiceCollection services,
-            Type[] profileAssemblyMarkerTypes)
+            params Type[] profileAssemblyMarkerTypes)
         {
             return services.AddMapIt(config => config.AddMaps(
                 profileAssemblyMarkerTypes.Select(t => t.GetTypeInfo().Assembly).Distinct().ToArray()));

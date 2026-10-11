@@ -26,7 +26,8 @@ namespace MapIt
             Configuration = configuration;
             ConfigurationProvider = configuration;
             _config = (IGlobalConfiguration)configuration;
-            _serviceCtor = serviceCtor;
+            // Per-mapper service constructor wins; otherwise use cfg.ConstructServicesUsing(...).
+            _serviceCtor = serviceCtor ?? configuration?._config.ServiceCtor;
             _boundMapperFactory = ctx => new ContextBoundRuntimeMapper(this, ctx);
         }
 

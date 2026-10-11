@@ -29,15 +29,20 @@ namespace MapIt
             var ogm = open.OpenGenericTypeMap;
             if (ogm == null) return null;
 
-            // Determine the type arguments from the requested destination (and/or source).
-            Type[] typeArgs = ResolveTypeArguments(open, requested);
-            if (typeArgs == null) return null;
+            // Each side is closed with its own type arguments, so Page<Order> -> PageDto<OrderDto>
+            // works; a non-generic side reuses the other side's arguments.
+            var sourceArgs = ArgumentsFor(open.SourceType, requested.SourceType);
+            var destArgs = ArgumentsFor(open.DestinationType, requested.DestinationType);
+            if (sourceArgs == null && destArgs == null) return null;
+            sourceArgs = sourceArgs ?? destArgs;
+            destArgs = destArgs ?? sourceArgs;
+            var typeArgs = destArgs;
 
             Type closedSource, closedDest;
             try
             {
-                closedSource = CloseType(open.SourceType, typeArgs);
-                closedDest = CloseType(open.DestinationType, typeArgs);
+                closedSource = CloseType(open.SourceType, sourceArgs);
+                closedDest = CloseType(open.DestinationType, destArgs);
             }
             catch (Exception ex)
             {
@@ -63,11 +68,11 @@ namespace MapIt
             else if (open.DestinationTypeOverride != null)
                 closedMap.DestinationTypeOverride = open.DestinationTypeOverride;
 
-            // Included derived/base pairs closed with the same args.
+            // Included derived/base pairs closed with each side's arguments.
             foreach (var inc in ogm.IncludedDerived)
-                closedMap.IncludedDerivedTypes.Add(new TypePair(CloseType(inc.Source, typeArgs), CloseType(inc.Destination, typeArgs)));
+                closedMap.IncludedDerivedTypes.Add(new TypePair(CloseType(inc.Source, sourceArgs), CloseType(inc.Destination, destArgs)));
             foreach (var inc in ogm.IncludedBase)
-                closedMap.IncludedBaseTypes.Add(new TypePair(CloseType(inc.Source, typeArgs), CloseType(inc.Destination, typeArgs)));
+                closedMap.IncludedBaseTypes.Add(new TypePair(CloseType(inc.Source, sourceArgs), CloseType(inc.Destination, destArgs)));
 
             // Replay the recorded steps.
             foreach (var step in ogm.Steps)
@@ -80,23 +85,15 @@ namespace MapIt
             return closedMap;
         }
 
-        private static Type[] ResolveTypeArguments(TypeMap open, TypePair requested)
+        /// <summary>
+        /// Type arguments of <paramref name="requested"/> when it is a constructed instance of the open
+        /// definition <paramref name="openDefinition"/>; null when that side is not an open generic match.
+        /// </summary>
+        private static Type[] ArgumentsFor(Type openDefinition, Type requested)
         {
-            // Prefer the destination definition's parameters mapped from the requested destination.
-            if (open.DestinationType.IsGenericTypeDefinition &&
-                requested.DestinationType.IsGenericType &&
-                requested.DestinationType.GetGenericTypeDefinition() == open.DestinationType)
-            {
-                return requested.DestinationType.GetGenericArguments();
-            }
-            // Else derive from the source definition.
-            if (open.SourceType.IsGenericTypeDefinition &&
-                requested.SourceType.IsGenericType &&
-                requested.SourceType.GetGenericTypeDefinition() == open.SourceType)
-            {
-                return requested.SourceType.GetGenericArguments();
-            }
-            return null;
+            if (openDefinition == null || requested == null) return null;
+            if (!openDefinition.IsGenericTypeDefinition || !requested.IsGenericType) return null;
+            return requested.GetGenericTypeDefinition() == openDefinition ? requested.GetGenericArguments() : null;
         }
 
         private static Type CloseType(Type openOrClosed, Type[] typeArgs)
@@ -178,6 +175,8 @@ namespace MapIt
             if (recipe == null) return;
             if (recipe.Ignore) { mm.Ignored = true; return; }
             if (recipe.NullSubstitute != null) mm.NullSubstitute = recipe.NullSubstitute;
+            if (recipe.AllowNull.HasValue) mm.AllowNull = recipe.AllowNull;
+            if (recipe.ExplicitExpansion) mm.IsExplicitExpansion = true;
             if (recipe.UseDestinationValue.HasValue) mm.UseDestinationValue = recipe.UseDestinationValue;
 
             if (recipe.SourceMemberNames != null && recipe.SourceMemberNames.Length > 0)

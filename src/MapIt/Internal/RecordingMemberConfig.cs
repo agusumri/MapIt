@@ -78,7 +78,7 @@ namespace MapIt
         public void MapFrom<TSourceMember>(IMemberValueResolver<TSource, TDestination, TSourceMember, TMember> valueResolver, Expression<Func<TSource, TSourceMember>> sourceMember) => throw RuntimeDelegate();
         public void MapFrom<TValueResolver, TSourceMember>(string sourceMemberName) { Recipe.ResolverType = typeof(TValueResolver); Recipe.SourceMemberNames = sourceMemberName?.Split('.'); }
         public void MapFrom<TValueResolver, TSourceMember>(Expression<Func<TSource, TSourceMember>> sourceMember) { Recipe.ResolverType = typeof(TValueResolver); }
-        public void MapFrom<TValueResolver>() where TValueResolver : IMemberValueResolver<TSource, TDestination, TMember, TMember>, new() => Recipe.ResolverType = typeof(TValueResolver);
+        public void MapFrom<TValueResolver>() where TValueResolver : IValueResolver<TSource, TDestination, TMember> => Recipe.ResolverType = typeof(TValueResolver);
 
         public void Condition(Func<TSource, bool> condition) => throw RuntimeDelegate();
         public void Condition(Func<TSource, TDestination, bool> condition) => throw RuntimeDelegate();
@@ -94,15 +94,20 @@ namespace MapIt
         public void DoNotUseDestinationValue() => Recipe.UseDestinationValue = false;
         public void MapAtRuntime() { }
         public void SetMappingOrder(int mappingOrder) => Recipe.MappingOrder = mappingOrder;
+        public void NullSubstitute(object nullSubstitute) => Recipe.NullSubstitute = nullSubstitute;
+        public void AllowNull() => Recipe.AllowNull = true;
+        public void DoNotAllowNull() => Recipe.AllowNull = false;
+        public void ExplicitExpansion() => Recipe.ExplicitExpansion = true;
+        public void AddTransform(Expression<Func<TMember, TMember>> transformer) => throw RuntimeDelegate();
         public void MapFromAsync(IAsyncValueResolver<TSource, TDestination, TMember> asyncResolver) => throw RuntimeDelegate();
         public void MapFromAsync(System.Func<TSource, System.Threading.Tasks.Task<TMember>> asyncResolver) => throw RuntimeDelegate();
 
         public void ConvertUsing<TSourceMember>(IValueConverter<TSourceMember, TMember> valueConverter, Expression<Func<TSource, TSourceMember>> sourceMember) => throw RuntimeDelegate();
         public void ConvertUsing<TSourceMember>(IValueConverter<TSourceMember, TMember> valueConverter, string sourceMemberName) => throw RuntimeDelegate();
         public void ConvertUsing<TSourceMember>(IValueConverter<TSourceMember, TMember> valueConverter) => throw RuntimeDelegate();
-        public void ConvertUsing<TValueConverter, TSourceMember>() where TValueConverter : IValueConverter<TSourceMember, TMember>, new() => Recipe.ConverterType = typeof(TValueConverter);
-        public void ConvertUsing<TValueConverter, TSourceMember>(Expression<Func<TSource, TSourceMember>> sourceMember) where TValueConverter : IValueConverter<TSourceMember, TMember>, new() => Recipe.ConverterType = typeof(TValueConverter);
-        public void ConvertUsing<TValueConverter, TSourceMember>(string sourceMemberName) where TValueConverter : IValueConverter<TSourceMember, TMember>, new() { Recipe.ConverterType = typeof(TValueConverter); Recipe.SourceMemberNames = sourceMemberName?.Split('.'); }
+        public void ConvertUsing<TValueConverter, TSourceMember>() where TValueConverter : IValueConverter<TSourceMember, TMember> => Recipe.ConverterType = typeof(TValueConverter);
+        public void ConvertUsing<TValueConverter, TSourceMember>(Expression<Func<TSource, TSourceMember>> sourceMember) where TValueConverter : IValueConverter<TSourceMember, TMember> => Recipe.ConverterType = typeof(TValueConverter);
+        public void ConvertUsing<TValueConverter, TSourceMember>(string sourceMemberName) where TValueConverter : IValueConverter<TSourceMember, TMember> { Recipe.ConverterType = typeof(TValueConverter); Recipe.SourceMemberNames = sourceMemberName?.Split('.'); }
 
         public void Ignore() => Recipe.Ignore = true;
 

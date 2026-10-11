@@ -61,8 +61,18 @@ namespace MapIt
         /// <summary>Maps using a member value resolver with a source member expression.</summary>
         void MapFrom<TValueResolver, TSourceMember>(Expression<Func<TSource, TSourceMember>> sourceMember);
 
-        /// <summary>Maps using a member value resolver (auto source member).</summary>
-        void MapFrom<TValueResolver>() where TValueResolver : IMemberValueResolver<TSource, TDestination, TMember, TMember>, new();
+        /// <summary>
+        /// Maps using a value resolver type. The resolver is created per mapping call through the
+        /// configured service constructor (so it can come from dependency injection).
+        /// </summary>
+        void MapFrom<TValueResolver>() where TValueResolver : IValueResolver<TSource, TDestination, TMember>;
+
+        /// <summary>Converts the given source member with a value converter instance.</summary>
+        void ConvertUsing<TSourceMember>(IValueConverter<TSourceMember, TMember> valueConverter, Expression<Func<TSource, TSourceMember>> sourceMember);
+
+        /// <summary>Converts the given source member with a value converter type.</summary>
+        void ConvertUsing<TValueConverter, TSourceMember>(Expression<Func<TSource, TSourceMember>> sourceMember)
+            where TValueConverter : IValueConverter<TSourceMember, TMember>;
 
         /// <summary>Adds a condition.</summary>
         void Condition(Func<TSource, bool> condition);
@@ -94,6 +104,12 @@ namespace MapIt
         /// <summary>Uses the destination's existing value.</summary>
         void UseDestinationValue();
 
+        /// <summary>
+        /// Leaves this member out of <c>ProjectTo</c> unless the caller asks for it
+        /// through <c>membersToExpand</c>.
+        /// </summary>
+        void ExplicitExpansion();
+
         /// <summary>Does not use the destination's existing value.</summary>
         void DoNotUseDestinationValue();
 
@@ -105,6 +121,21 @@ namespace MapIt
 
         /// <summary>Ignores the member.</summary>
         void Ignore();
+
+        /// <summary>Uses <paramref name="nullSubstitute"/> when the source value is null.</summary>
+        void NullSubstitute(object nullSubstitute);
+
+        /// <summary>Lets this member receive null, overriding the profile setting.</summary>
+        void AllowNull();
+
+        /// <summary>
+        /// Never assigns null to this member: a null source creates an empty string, empty
+        /// collection or new instance instead (overriding the profile setting).
+        /// </summary>
+        void DoNotAllowNull();
+
+        /// <summary>Transforms the mapped value before it is assigned (for example trimming strings).</summary>
+        void AddTransform(Expression<Func<TMember, TMember>> transformer);
 
         /// <summary>
         /// Resolves the member asynchronously. Only honored by <c>mapper.MapAsync(...)</c>;

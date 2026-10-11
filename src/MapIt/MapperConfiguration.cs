@@ -83,6 +83,10 @@ namespace MapIt
             }
             _profilesSnapshot = profileMaps.ToArray();
 
+            // (b2) Include / IncludeBase: derived maps inherit the base map's explicit member
+            // configuration and actions (before convention discovery, so conventions don't win).
+            ApplyMapInheritance();
+
             // (c) convention discovery (run before S2 self-reference walk and attribute application).
             foreach (var tm in _allMaps)
             {
@@ -116,6 +120,81 @@ namespace MapIt
                 tm.Seal();
 
             _sealed = true;
+        }
+
+        /// <summary>
+        /// Copies explicit member configuration and before/after actions from base maps into derived
+        /// maps linked by <c>IncludeBase</c> (on the derived map) or <c>Include</c> (on the base map).
+        /// Members the derived map configures itself keep their own configuration.
+        /// </summary>
+        private void ApplyMapInheritance()
+        {
+            var byPair = new Dictionary<TypePair, TypeMap>();
+            foreach (var tm in _allMaps)
+                if (!tm.IsOpenGeneric && tm.SourceType != null && tm.DestinationType != null && !byPair.ContainsKey(tm.Types))
+                    byPair[tm.Types] = tm;
+
+            var applied = new HashSet<TypeMap>();
+            foreach (var derived in _allMaps)
+                Inherit(derived, byPair, applied, new HashSet<TypeMap>());
+        }
+
+        private void Inherit(TypeMap derived, Dictionary<TypePair, TypeMap> byPair, HashSet<TypeMap> applied, HashSet<TypeMap> visiting)
+        {
+            if (derived.IsOpenGeneric || applied.Contains(derived) || !visiting.Add(derived)) return;
+
+            var bases = new List<TypeMap>();
+            foreach (var pair in derived.IncludedBaseTypes)
+                if (byPair.TryGetValue(pair, out var b) && b != derived) bases.Add(b);
+            foreach (var candidate in _allMaps)
+                if (candidate != derived && candidate.IncludedDerivedTypes.Contains(derived.Types) && !bases.Contains(candidate))
+                    bases.Add(candidate);
+
+            foreach (var baseMap in bases)
+            {
+                Inherit(baseMap, byPair, applied, visiting);   // multi-level: base inherits first
+                CopyInheritedConfiguration(baseMap, derived);
+            }
+
+            applied.Add(derived);
+        }
+
+        private static void CopyInheritedConfiguration(TypeMap baseMap, TypeMap derived)
+        {
+            foreach (var basePm in baseMap.PropertyMaps)
+            {
+                if (!basePm.IsExplicitlyConfigured) continue;
+                var destProp = derived.DestinationType.GetProperty(basePm.DestinationName, BindingFlags.Public | BindingFlags.Instance);
+                if (destProp == null || !destProp.CanWrite) continue;
+
+                var existing = derived.PropertyMaps.FirstOrDefault(p => p.DestinationName == basePm.DestinationName);
+                if (existing != null && existing.IsExplicitlyConfigured) continue;   // derived configuration wins
+
+                var pm = existing ?? derived.FindOrCreatePropertyMapFor(destProp, destProp.PropertyType);
+                pm.IsExplicitlyConfigured = true;
+                pm.Ignored = basePm.Ignored;
+                pm.SourceMembers = basePm.SourceMembers;
+                pm.Resolver = basePm.Resolver;
+                pm.AsyncResolver = basePm.AsyncResolver;
+                pm.CustomMapExpression = basePm.CustomMapExpression;
+                pm.Condition = basePm.Condition;
+                pm.PreCondition = basePm.PreCondition;
+                pm.ConditionDelegate = basePm.ConditionDelegate;
+                pm.PreConditionDelegate = basePm.PreConditionDelegate;
+                pm.NullSubstitute = basePm.NullSubstitute;
+                pm.AllowNull = basePm.AllowNull;
+                pm.UseDestinationValue = basePm.UseDestinationValue;
+                pm.MappingOrder = basePm.MappingOrder;
+                pm.ValueTransformers = basePm.ValueTransformers;
+                pm.MapAtRuntime = basePm.MapAtRuntime;
+                pm.IsExplicitExpansion = basePm.IsExplicitExpansion;
+            }
+
+            // Base actions run before the derived map's own actions.
+            if (baseMap.BeforeMapActions.Count > 0)
+                derived.BeforeMapActions.InsertRange(0, baseMap.BeforeMapActions.Where(a => !derived.BeforeMapActions.Contains(a)));
+            if (baseMap.AfterMapActions.Count > 0)
+                derived.AfterMapActions.InsertRange(0, baseMap.AfterMapActions.Where(a => !derived.AfterMapActions.Contains(a)));
         }
 
         private void ApplyUnflattening(TypeMap reverseMap)
@@ -254,6 +333,13 @@ namespace MapIt
                         (p.SourceMembers != null || p.Resolver != null || p.AsyncResolver != null || p.Ignored || p.IsExplicitlyConfigured)))
                     continue;
 
+                // Exclusions are honored at mapping time, not only during validation (S10).
+                if (IsExcludedByConvention(destProp, profile))
+                {
+                    typeMap.FindOrCreatePropertyMapFor(destProp, destProp.PropertyType).Ignored = true;
+                    continue;
+                }
+
                 var srcChain = FindSourceChain(sourceType, destProp.Name, profile);
 
                 // IncludeMembers: if not matched directly, look inside each included source member.
@@ -281,6 +367,21 @@ namespace MapIt
                 else
                     existing.Ignored = true;   // convention-discovered, not explicitly configured
             }
+        }
+
+        /// <summary>
+        /// Whether convention discovery must skip a destination member: a global-ignore prefix or a
+        /// ShouldMapProperty filter on the declaring profile or on the root configuration.
+        /// </summary>
+        private bool IsExcludedByConvention(PropertyInfo destProp, Profile profile)
+        {
+            foreach (var p in new[] { profile, (Profile)_config })
+            {
+                if (p == null) continue;
+                if (p.GlobalIgnores.Any(prefix => destProp.Name.StartsWith(prefix, StringComparison.Ordinal))) return true;
+                if (p.ShouldMapProperty != null && !p.ShouldMapProperty(destProp)) return true;
+            }
+            return false;
         }
 
         private static MemberInfo[] FindSourceChain(Type sourceType, string destMemberName, Profile profile)
@@ -372,7 +473,15 @@ namespace MapIt
         {
             // 1. Exact frozen map, then the closed/resolved cache.
             if (_exactMaps.TryGetValue(typePair, out var exact))
+            {
+                // As<T>(): redirect to the (S, T) map so a T is created whenever D is requested.
+                if (exact.DestinationTypeOverride != null && exact.DestinationTypeOverride != typePair.DestinationType)
+                {
+                    var redirected = FindTypeMapFor(new TypePair(typePair.SourceType, exact.DestinationTypeOverride));
+                    if (redirected != null) return redirected;
+                }
                 return exact;
+            }
             if (_closedMapCache.TryGetValue(typePair, out var cached))
                 return cached;
 
@@ -395,26 +504,49 @@ namespace MapIt
             return null;
         }
 
+        /// <summary>
+        /// Polymorphic dispatch (BEHAVIOR §2 step 2): a request (S, D) where a base map (B, D) includes
+        /// derived maps resolves to the most specific included derived map whose source S derives
+        /// from. The returned map's destination is a subtype of D, so a derived destination is created.
+        /// </summary>
         private TypeMap ResolvePolymorphic(TypePair typePair)
         {
             TypeMap best = null;
-            foreach (var tm in _allMaps)
+            foreach (var baseMap in _allMaps)
             {
-                if (tm.IsOpenGeneric) continue;
-                if (tm.SourceType == null || tm.DestinationType == null) continue;
-                bool sourceAssignable = tm.SourceType.IsAssignableFrom(typePair.SourceType);
-                bool destAssignable = tm.DestinationType.IsAssignableFrom(typePair.DestinationType);
-                if (!sourceAssignable || !destAssignable) continue;
-                if (tm.SourceType == typePair.SourceType && tm.DestinationType == typePair.DestinationType) continue;
+                if (baseMap.IsOpenGeneric || baseMap.SourceType == null || baseMap.DestinationType == null) continue;
+                if (baseMap.DestinationType != typePair.DestinationType) continue;
+                if (!baseMap.SourceType.IsAssignableFrom(typePair.SourceType)) continue;
+                if (baseMap.IncludedDerivedTypes.Count == 0 && !baseMap.IncludeAllDerived) continue;
 
-                bool participates = tm.IncludeAllDerived
-                    || tm.IncludedDerivedTypes.Any(p => p.SourceType.IsAssignableFrom(typePair.SourceType) && p.DestinationType.IsAssignableFrom(typePair.DestinationType));
-                if (!participates) continue;
-
-                if (best == null || tm.DestinationType.IsAssignableFrom(best.DestinationType))
-                    best = tm;
+                foreach (var candidate in DerivedCandidates(baseMap))
+                {
+                    if (!candidate.SourceType.IsAssignableFrom(typePair.SourceType)) continue;
+                    if (!typePair.DestinationType.IsAssignableFrom(candidate.DestinationType)) continue;
+                    if (best == null || best.SourceType.IsAssignableFrom(candidate.SourceType))
+                        best = candidate;
+                }
+                if (best == null && baseMap.SourceType.IsAssignableFrom(typePair.SourceType))
+                    best = baseMap;   // derived source with no more specific map: use the base map
             }
             return best;
+        }
+
+        private IEnumerable<TypeMap> DerivedCandidates(TypeMap baseMap)
+        {
+            foreach (var pair in baseMap.IncludedDerivedTypes)
+                if (_exactMaps.TryGetValue(pair, out var derived))
+                    yield return derived;
+
+            if (baseMap.IncludeAllDerived)
+            {
+                foreach (var tm in _allMaps)
+                {
+                    if (tm == baseMap || tm.IsOpenGeneric || tm.SourceType == null || tm.DestinationType == null) continue;
+                    if (baseMap.SourceType.IsAssignableFrom(tm.SourceType) && baseMap.DestinationType.IsAssignableFrom(tm.DestinationType))
+                        yield return tm;
+                }
+            }
         }
 
         private TypeMap ResolveBaseInterfaceFallback(TypePair typePair)

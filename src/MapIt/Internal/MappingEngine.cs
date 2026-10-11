@@ -122,16 +122,16 @@ namespace MapIt
                 return MapFromDynamic(configuration, source, destination, destinationType, context);
             }
 
-            // 5. Collections
+            // 5. Dictionaries (detected before generic collections, BEHAVIOR §6)
+            if (sourceType.IsDictionaryType() && destinationType.IsDictionaryType())
+            {
+                return MapDictionary(configuration, source, destination, sourceType, destinationType, context);
+            }
+
+            // 6. Collections
             if (ReflectionHelper.IsCollection(sourceType) || ReflectionHelper.IsCollection(destinationType))
             {
                 return MapCollection(configuration, source, destination, sourceType, destinationType, context);
-            }
-
-            // 6. Dictionaries
-            if (sourceType.IsDictionaryType() || destinationType.IsDictionaryType())
-            {
-                return MapDictionary(configuration, source, destination, sourceType, destinationType, context);
             }
 
             // A configured map that carries real member/ctor/converter config always wins.
@@ -195,7 +195,8 @@ namespace MapIt
                 if (occurrence > typeMap.MaxDepth)
                 {
                     context.ExitTypeMap(typeMap);
-                    return destination ?? CreateNew(destinationType);
+                    return destination;   // null unless mapping onto an existing object
+
                 }
             }
             try
@@ -215,9 +216,15 @@ namespace MapIt
                 }
                 else
                 {
-                    dest = CreateNew(destinationType);
+                    // Polymorphic dispatch may resolve a map whose destination is a subtype of the
+                    // requested one: construct that derived destination.
+                    var constructType = typeMap != null && typeMap.DestinationType != null
+                        && destinationType.IsAssignableFrom(typeMap.DestinationType)
+                        ? typeMap.DestinationType
+                        : destinationType;
+                    dest = CreateNew(constructType);
                     if (dest == null)
-                        throw new MapItMappingException($"Unable to create an instance of {destinationType.Name}.")
+                        throw new MapItMappingException($"Unable to create an instance of {constructType.Name}.")
                         { Types = new TypePair(sourceType, destinationType), TypeMap = typeMap };
                 }
             }
@@ -417,10 +424,23 @@ namespace MapIt
                     return;
             }
 
-            // Use destination value
+            // Use destination value: an existing object/collection is mapped into (same instance
+            // kept); anything else (null source, scalars, no existing instance) keeps what is there.
+            object mapIntoExisting = null;
             if (propMap.UseDestinationValue == true)
             {
-                return; // keep existing
+                bool canMapInto = existingDestValue != null && sourceValue != null
+                    && !(existingDestValue is string)
+                    && !existingDestValue.GetType().IsValueType;
+                if (!canMapInto)
+                {
+                    if (existingDestValue != null || sourceValue == null)
+                        return; // keep existing
+                }
+                else
+                {
+                    mapIntoExisting = existingDestValue;
+                }
             }
 
             // hasSourceChain already determined during source resolution above (§5 step 8),
@@ -452,7 +472,7 @@ namespace MapIt
                     mappedValue = Map(
                         configuration,
                         sourceValue,
-                        null,
+                        mapIntoExisting,
                         srcType,
                         propMap.DestinationType,
                         context,
@@ -530,7 +550,10 @@ namespace MapIt
                 return Activator.CreateInstance(memberType);   // non-nullable struct: default(T)
             }
 
-            bool allowNull = propMap.TypeMap?.Profile?.AllowsNullDestinationValuesFor(propMap) ?? true;
+            bool allowNull = propMap.TypeMap?.Profile?.AllowsNullDestinationValuesFor(propMap)
+                ?? (propMap.AllowNull
+                    ?? (configuration as MapperConfiguration)?.RootProfileMap?.AllowNullDestinationValues
+                    ?? true);
             if (allowNull || Nullable.GetUnderlyingType(memberType) != null)
                 return null;
             if (memberType == typeof(string))
@@ -1110,7 +1133,9 @@ namespace MapIt
             if (destinationType.IsValueType && Nullable.GetUnderlyingType(destinationType) == null)
                 return false;
             var profile = configuration.FindTypeMapFor(sourceType, destinationType)?.Profile;
-            return profile?.AllowsNullDestinationValuesFor(null) ?? true;
+            return profile?.AllowsNullDestinationValuesFor(null)
+                ?? (configuration as MapperConfiguration)?.RootProfileMap?.AllowNullDestinationValues
+                ?? true;
         }
 
         /// <summary>

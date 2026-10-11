@@ -232,12 +232,15 @@ namespace MapIt
         }
 
         /// <inheritdoc />
-        public void MapFrom<TValueResolver>() where TValueResolver : IMemberValueResolver<TSource, TDestination, TMember, TMember>, new()
+        public void MapFrom<TValueResolver>() where TValueResolver : IValueResolver<TSource, TDestination, TMember>
         {
-            var resolver = new TValueResolver();
-            MemberMap.Resolver = new MemberValueResolverMember(
-                (s, d, sm, dm, ctx) => (object)resolver.Resolve((TSource)s, (TDestination)d, (TMember)sm, (TMember)dm, ctx),
-                null);
+            var resolverType = typeof(TValueResolver);
+            MemberMap.Resolver = new ValueResolverMember((s, d, dm, ctx) =>
+            {
+                // Created per call via the service constructor (DI-friendly), like other resolver types.
+                var resolver = (TValueResolver)(ctx?.ServiceCtor != null ? ctx.ServiceCtor(resolverType) : Activator.CreateInstance(resolverType));
+                return resolver.Resolve((TSource)s, (TDestination)d, dm is TMember m ? m : default, ctx);
+            });
         }
 
         /// <inheritdoc />
@@ -311,10 +314,20 @@ namespace MapIt
         /// <inheritdoc />
         public void ConvertUsing<TSourceMember>(IValueConverter<TSourceMember, TMember> valueConverter, Expression<Func<TSource, TSourceMember>> sourceMember)
         {
-            var chain = GetMemberPath(sourceMember);
-            var accessor = chain != null && chain.Length > 0 ? (Func<object, object>)(s => GetChainValue(s, chain)) : null;
+            UseConverterSource(sourceMember);
             MemberMap.Resolver = new ValueConverterMember((s, d, sm, dm, ctx) =>
                 (object)valueConverter.Convert((TSourceMember)sm, ctx));
+        }
+
+        /// <summary>
+        /// Points the converter at the given source member. The engine resolves
+        /// <see cref="MemberMap.SourceMembers"/> and passes that value to the converter.
+        /// </summary>
+        private void UseConverterSource<TSourceMember>(Expression<Func<TSource, TSourceMember>> sourceMember)
+        {
+            var chain = sourceMember == null ? null : GetMemberPath(sourceMember);
+            if (chain != null && chain.Length > 0)
+                MemberMap.SourceMembers = chain;
         }
 
         /// <inheritdoc />
@@ -335,24 +348,26 @@ namespace MapIt
         }
 
         /// <inheritdoc />
-        public void ConvertUsing<TValueConverter, TSourceMember>() where TValueConverter : IValueConverter<TSourceMember, TMember>, new()
+        public void ConvertUsing<TValueConverter, TSourceMember>() where TValueConverter : IValueConverter<TSourceMember, TMember>
         {
-            var converter = new TValueConverter();
+            // Created per call via the service constructor (DI-friendly).
             MemberMap.Resolver = new ValueConverterMember((s, d, sm, dm, ctx) =>
-                (object)converter.Convert((TSourceMember)sm, ctx));
+                (object)MapIt.Internal.ServiceFactory.Create<TValueConverter>(ctx).Convert((TSourceMember)sm, ctx));
         }
 
         /// <inheritdoc />
-        public void ConvertUsing<TValueConverter, TSourceMember>(Expression<Func<TSource, TSourceMember>> sourceMember) where TValueConverter : IValueConverter<TSourceMember, TMember>, new()
+        public void ConvertUsing<TValueConverter, TSourceMember>(Expression<Func<TSource, TSourceMember>> sourceMember) where TValueConverter : IValueConverter<TSourceMember, TMember>
         {
-            var converter = new TValueConverter();
-            MemberMap.Resolver = new ValueConverterMember((s, d, sm, dm, ctx) =>
-                (object)converter.Convert((TSourceMember)sm, ctx));
+            UseConverterSource(sourceMember);
+            ConvertUsing<TValueConverter, TSourceMember>();
         }
 
         /// <inheritdoc />
-        public void ConvertUsing<TValueConverter, TSourceMember>(string sourceMemberName) where TValueConverter : IValueConverter<TSourceMember, TMember>, new()
+        public void ConvertUsing<TValueConverter, TSourceMember>(string sourceMemberName) where TValueConverter : IValueConverter<TSourceMember, TMember>
         {
+            var chain = ResolveChainByName(sourceMemberName);
+            if (chain != null && chain.Length > 0)
+                MemberMap.SourceMembers = chain;
             ConvertUsing<TValueConverter, TSourceMember>();
         }
 

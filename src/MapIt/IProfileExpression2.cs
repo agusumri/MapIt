@@ -41,16 +41,16 @@ namespace MapIt
         void IncludeSourceExtensionMethods(Type type);
 
         /// <summary>Recognizes destination postfixes for member-name matching.</summary>
-        void RecognizeDestinationPostfixes(string[] postfixes);
+        void RecognizeDestinationPostfixes(params string[] postfixes);
 
         /// <summary>Recognizes destination prefixes for member-name matching.</summary>
-        void RecognizeDestinationPrefixes(string[] prefixes);
+        void RecognizeDestinationPrefixes(params string[] prefixes);
 
         /// <summary>Recognizes postfixes for member-name matching.</summary>
-        void RecognizePostfixes(string[] postfixes);
+        void RecognizePostfixes(params string[] postfixes);
 
         /// <summary>Recognizes prefixes for member-name matching.</summary>
-        void RecognizePrefixes(string[] prefixes);
+        void RecognizePrefixes(params string[] prefixes);
 
         /// <summary>Replaces a destination member name when matching to source.</summary>
         void ReplaceMemberName(string original, string newValue);
