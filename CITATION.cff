@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use MapIt in your work, please cite it using the metadata below."
+title: "MapIt: a fast, convention-based object-to-object mapper for .NET"
+type: software
+authors:
+  - name: "MapIt Contributors"
+repository-code: "https://github.com/agusumri/MapIt"
+url: "https://github.com/agusumri/MapIt"
+abstract: >-
+  MapIt is an open-source (MIT) object-to-object mapper for .NET with a fluent
+  configuration API, convention-based matching, flattening and unflattening,
+  projection to IQueryable, validation, and a compile-time (AOT) source generator.
+keywords:
+  - object-mapper
+  - mapping
+  - dotnet
+  - csharp
+  - dto
+  - projection
+  - aot
+license: MIT
+version: "1.0.0"
