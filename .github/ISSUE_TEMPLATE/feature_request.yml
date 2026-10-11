@@ -1,0 +1,26 @@
+name: Feature request
+description: Suggest an idea or improvement for MapIt.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the use case or the limitation you're hitting.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed API or behavior
+      description: How would you like it to look? A sketch of the API is helpful.
+      render: csharp
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you've tried or other approaches you weighed.
+    validations:
+      required: false

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or usage help
+    url: https://github.com/agusumri/MapIt/discussions
+    about: Ask how to do something, or check the wiki first.
+  - name: Documentation (Wiki)
+    url: https://github.com/agusumri/MapIt/wiki
+    about: Feature guides with working examples.

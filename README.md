@@ -176,6 +176,12 @@ var copy = mapper.Clone(order);
 - **`AllowNullDestinationValues` defaults to `true`.** When set to `false` (globally, per-profile, or per-member via `opt.DoNotAllowNull()`), a null source yields a new destination instance / empty string instead of null.
 - The `Profiles` collection lists the root `<global>` profile first, so `AssertConfigurationIsValid("<global>")` validates maps declared directly on `cfg`.
 
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build, test (both execution paths), and submit changes, and please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Security issues should be reported privately per the [security policy](.github/SECURITY.md).
+
+Release notes live in [CHANGELOG.md](CHANGELOG.md).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

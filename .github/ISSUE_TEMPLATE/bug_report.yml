@@ -1,0 +1,53 @@
+name: Bug report
+description: Report something that doesn't work as expected.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please fill in as much as you can so it's reproducible.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+      placeholder: Mapping Order -> OrderDto drops the Status member...
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: The smallest mapping configuration and call that shows the problem.
+      render: csharp
+      placeholder: |
+        var config = new MapperConfiguration(cfg => cfg.CreateMap<Order, OrderDto>());
+        var mapper = config.CreateMapper();
+        var dto = mapper.Map<OrderDto>(new Order { ... });
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: MapIt version
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: tfm
+    attributes:
+      label: Target framework
+      options:
+        - .NET 10.0
+        - .NET 8.0
+        - .NET Standard 2.0 consumer
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Stack traces, logs, or related issues.
+    validations:
+      required: false
