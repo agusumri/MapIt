@@ -15,6 +15,10 @@ MapIt is a fully open-source (MIT) mapper that:
 
 The authoritative behavior contract — including the non-negotiable safety guarantees (depth cap, self-reference handling, collection budget, fail-closed, missing-map-throws) — is documented in [`docs/BEHAVIOR.md`](docs/BEHAVIOR.md).
 
+## Documentation
+
+The **[MapIt Wiki](https://github.com/agusumri/MapIt/wiki)** is a beginner-friendly guide to every feature — what it's for and how to use it. Every example in it is backed by a passing test. Start with [Getting Started](https://github.com/agusumri/MapIt/wiki/Getting-Started), then explore [Dependency Injection](https://github.com/agusumri/MapIt/wiki/Dependency-Injection), [Customizing Members](https://github.com/agusumri/MapIt/wiki/Customizing-Members), [Projection and Queries](https://github.com/agusumri/MapIt/wiki/Projection-and-Queries), and more.
+
 ## Sample application
 
 A real-world example of using MapIt in an ASP.NET Core minimal API lives in [`samples/MapIt.ProductApi`](samples/MapIt.ProductApi). It's a small product-store API that maps domain entities to DTOs (and back) using MapIt, including nested objects and computed members:
