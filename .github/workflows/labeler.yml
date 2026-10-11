@@ -14,3 +14,5 @@ jobs:
       - uses: actions/labeler@v5
         with:
           configuration-path: .github/labeler.yml
+          # Match dotfile paths too (our config targets .github/**).
+          dot: true
