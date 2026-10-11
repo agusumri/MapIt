@@ -1,0 +1,33 @@
+# Auto-labels PRs by the files they touch (actions/labeler v5 syntax).
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/*.md'
+          - 'docs/**'
+
+source-generator:
+  - changed-files:
+      - any-glob-to-any-file: 'src/MapIt.SourceGenerator/**'
+
+dependency-injection:
+  - changed-files:
+      - any-glob-to-any-file: 'src/MapIt.Extensions.Microsoft.DependencyInjection/**'
+
+core:
+  - changed-files:
+      - any-glob-to-any-file: 'src/MapIt/**'
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file: 'tests/**'
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/**'
+          - '**/*.yml'
+          - '**/*.yaml'
+
+samples:
+  - changed-files:
+      - any-glob-to-any-file: 'samples/**'

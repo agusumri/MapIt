@@ -1,0 +1,10 @@
+# Default owner for everything in this repo.
+# Requests review automatically when a PR touches matching paths.
+* @agusumri
+
+# Core library
+/src/MapIt/              @agusumri
+/src/MapIt.SourceGenerator/ @agusumri
+
+# CI / tooling
+/.github/                @agusumri

@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (e.g. v1.0.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build, pack & publish GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET (8.0 + 10.0)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Resolve version from tag
+        id: version
+        run: |
+          REF="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${REF#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building version $VERSION"
+
+      - name: Restore
+        run: dotnet restore MapIt.sln
+
+      - name: Build
+        run: dotnet build MapIt.sln --no-restore --configuration Release -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Test
+        run: dotnet test MapIt.sln --no-build --configuration Release
+
+      - name: Pack
+        run: dotnet pack src/MapIt/MapIt.csproj --no-build --configuration Release -p:Version=${{ steps.version.outputs.version }} -o ./artifacts
+
+      - name: Pack DI package
+        run: dotnet pack src/MapIt.Extensions.Microsoft.DependencyInjection/MapIt.Extensions.Microsoft.DependencyInjection.csproj --configuration Release -p:Version=${{ steps.version.outputs.version }} -o ./artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: MapIt ${{ steps.version.outputs.version }}
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          generate_release_notes: true
+          body_path: ${{ github.workspace }}/.github/release-notes-intro.md
+          files: |
+            ./artifacts/*.nupkg
+            ./artifacts/*.snupkg

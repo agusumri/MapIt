@@ -1,0 +1,37 @@
+# Normalize line endings: Git stores LF, checks out native on each platform.
+* text=auto
+
+# Explicitly text files (checked out with the platform's native EOL)
+*.cs      text diff=csharp
+*.csproj  text
+*.sln     text
+*.props   text
+*.targets text
+*.md      text
+*.yml     text
+*.yaml    text
+*.json    text
+*.config  text
+*.editorconfig text
+*.gitattributes text
+*.gitignore text
+
+# Scripts keep a fixed EOL so they run on their target shell
+*.sh  text eol=lf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Binary files Git should never try to diff or convert
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.snk  binary
+*.pfx  binary
+*.nupkg binary
+*.snupkg binary
+
+# Keep generated/vendored files out of diffs and language stats
+docs/BEHAVIOR.md linguist-documentation

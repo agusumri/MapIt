@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/agusumri/MapIt/actions/workflows/ci.yml/badge.svg)](https://github.com/agusumri/MapIt/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/agusumri/MapIt/actions/workflows/codeql.yml/badge.svg)](https://github.com/agusumri/MapIt/actions/workflows/codeql.yml)
+[![codecov](https://codecov.io/gh/agusumri/MapIt/branch/main/graph/badge.svg)](https://codecov.io/gh/agusumri/MapIt)
+[![Release](https://img.shields.io/github/v/release/agusumri/MapIt?sort=semver)](https://github.com/agusumri/MapIt/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 A fast, convention-based object-to-object mapper for .NET.
