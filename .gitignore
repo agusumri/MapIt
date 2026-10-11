@@ -1,0 +1,32 @@
+## .NET / Visual Studio
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.idea/
+*.DotSettings
+TestResults/
+artifacts/
+
+## NuGet
+*.nupkg
+*.snupkg
+packages/
+*.psm1
+
+## Build
+build/
+dist/
+publish/
+*.dll
+*.exe
+!tools/**/*.dll
+
+## OS
+Thumbs.db
+.DS_Store
+
+## Internal agent task-tracking (not part of the library)
+.agents/
+.worktrees/
