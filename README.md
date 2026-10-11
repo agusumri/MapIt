@@ -1,5 +1,9 @@
 # MapIt
 
+[![CI](https://github.com/agusumri/MapIt/actions/workflows/ci.yml/badge.svg)](https://github.com/agusumri/MapIt/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/agusumri/MapIt/actions/workflows/codeql.yml/badge.svg)](https://github.com/agusumri/MapIt/actions/workflows/codeql.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A fast, convention-based object-to-object mapper for .NET.
 
 MapIt maps one object to another without the dreary boilerplate of hand-written property copying. You declare the mappings once (by convention or explicitly) and MapIt does the rest.

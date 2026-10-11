@@ -15,10 +15,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET
+      - name: Setup .NET (8.0 + 10.0)
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: |
+            8.0.x
+            10.0.x
 
       - name: Restore
         run: dotnet restore MapIt.sln
@@ -26,5 +28,33 @@ jobs:
       - name: Build
         run: dotnet build MapIt.sln --no-restore --configuration Release
 
-      - name: Test
+      - name: Test (compiled plans ON)
         run: dotnet test MapIt.sln --no-build --configuration Release --verbosity normal
+
+      - name: Test (compiled plans OFF)
+        env:
+          MAPIT_DISABLE_COMPILED_PLANS: '1'
+        run: dotnet test MapIt.sln --no-build --configuration Release --verbosity normal
+
+  pack:
+    name: Pack (validate NuGet packages)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET (8.0 + 10.0)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Pack
+        run: dotnet pack src/MapIt/MapIt.csproj --configuration Release -o ./artifacts
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: ./artifacts/*.nupkg
