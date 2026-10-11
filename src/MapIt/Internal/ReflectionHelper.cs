@@ -26,10 +26,85 @@ namespace MapIt
         public static bool HasAttribute(MemberInfo member, Type attributeType) =>
             member?.GetCustomAttribute(attributeType) != null;
 
+        // Compiled getter/setter caches: avoids per-call reflection on hot paths.
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<MemberInfo, Func<object, object>> _getters
+            = new System.Collections.Concurrent.ConcurrentDictionary<MemberInfo, Func<object, object>>();
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<MemberInfo, Action<object, object>> _setters
+            = new System.Collections.Concurrent.ConcurrentDictionary<MemberInfo, Action<object, object>>();
+
+        /// <summary>Gets a cached, compiled getter delegate for a property or field (null for methods).</summary>
+        public static Func<object, object> GetCompiledGetter(MemberInfo member)
+        {
+            if (member is MethodInfo) return null;   // extension/Get methods use the reflection path
+            return _getters.GetOrAdd(member, BuildGetter);
+        }
+
+        /// <summary>Gets a cached, compiled setter delegate for a settable property or field.</summary>
+        public static Action<object, object> GetCompiledSetter(MemberInfo member)
+            => _setters.GetOrAdd(member, BuildSetter);
+
+        private static Func<object, object> BuildGetter(MemberInfo member)
+        {
+            try
+            {
+                var target = Expression.Parameter(typeof(object), "t");
+                Expression instance = Expression.Convert(target, member.DeclaringType);
+                Expression access;
+                if (member is PropertyInfo p)
+                {
+                    if (p.GetGetMethod(true) == null) return null;
+                    access = Expression.Property(instance, p);
+                }
+                else if (member is FieldInfo f)
+                {
+                    access = Expression.Field(instance, f);
+                }
+                else return null;
+                var body = Expression.Convert(access, typeof(object));
+                return Expression.Lambda<Func<object, object>>(body, target).Compile();
+            }
+            catch { return null; }
+        }
+
+        private static Action<object, object> BuildSetter(MemberInfo member)
+        {
+            try
+            {
+                var target = Expression.Parameter(typeof(object), "t");
+                var value = Expression.Parameter(typeof(object), "v");
+                Expression instance = Expression.Convert(target, member.DeclaringType);
+                Type memberType;
+                Expression assignTarget;
+                if (member is PropertyInfo p)
+                {
+                    if (p.GetSetMethod(true) == null) return null;
+                    memberType = p.PropertyType;
+                    assignTarget = Expression.Property(instance, p);
+                }
+                else if (member is FieldInfo f)
+                {
+                    if (f.IsInitOnly || f.IsLiteral) return null;
+                    memberType = f.FieldType;
+                    assignTarget = Expression.Field(instance, f);
+                }
+                else return null;
+                var typedValue = Expression.Convert(value, memberType);
+                var body = Expression.Assign(assignTarget, typedValue);
+                return Expression.Lambda<Action<object, object>>(body, target, value).Compile();
+            }
+            catch { return null; }
+        }
+
         /// <summary>Gets a member value from a target object.</summary>
         public static object GetMemberValue(MemberInfo member, object target)
         {
             if (target == null) return null;
+            // Fast path: compiled getter for properties/fields.
+            if (!(member is MethodInfo))
+            {
+                var getter = GetCompiledGetter(member);
+                if (getter != null) return getter(target);
+            }
             try
             {
                 if (member is PropertyInfo p)
@@ -52,6 +127,13 @@ namespace MapIt
         public static void SetMemberValue(MemberInfo member, object target, object value)
         {
             if (target == null) return;
+            // Fast path: compiled setter.
+            var setter = GetCompiledSetter(member);
+            if (setter != null)
+            {
+                setter(target, value);
+                return;
+            }
             try
             {
                 if (member is PropertyInfo p)
@@ -106,13 +188,16 @@ namespace MapIt
             return null;
         }
 
-        /// <summary>Whether a type is a collection type.</summary>
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, bool> _isCollection
+            = new System.Collections.Concurrent.ConcurrentDictionary<Type, bool>();
+
+        /// <summary>Whether a type is a collection type (cached per type).</summary>
         public static bool IsCollection(Type type)
         {
             if (type == null || type == typeof(string)) return false;
             if (type.IsArray) return true;
-            return type.GetInterfaces().Any(i => i.IsGenericType &&
-                (i.GetGenericTypeDefinition() == typeof(IEnumerable<>) || i.GetGenericTypeDefinition() == typeof(IDictionary<,>)));
+            return _isCollection.GetOrAdd(type, t => t.GetInterfaces().Any(i => i.IsGenericType &&
+                (i.GetGenericTypeDefinition() == typeof(IEnumerable<>) || i.GetGenericTypeDefinition() == typeof(IDictionary<,>))));
         }
 
         /// <summary>Whether a type is a nullable type.</summary>
@@ -199,11 +284,15 @@ namespace MapIt
                 || (type.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IList<>)));
         }
 
-        /// <summary>Whether a type is a dictionary-like type.</summary>
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, bool> _isDictionary
+            = new System.Collections.Concurrent.ConcurrentDictionary<Type, bool>();
+
+        /// <summary>Whether a type is a dictionary-like type (cached per type).</summary>
         public static bool IsDictionaryType(this Type type)
         {
             if (type == null) return false;
-            return type.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IDictionary<,>));
+            return _isDictionary.GetOrAdd(type, t =>
+                t.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IDictionary<,>)));
         }
 
         /// <summary>Whether a type is a key-value pair type.</summary>

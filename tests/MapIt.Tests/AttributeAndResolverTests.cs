@@ -126,7 +126,7 @@ namespace MapIt.Tests
         {
             var config = new MapperConfiguration(cfg => { });
             var m = config.CreateMapper();
-            Assert.Equal(true, m.Map<string, bool>("true"));
+            Assert.True(m.Map<string, bool>("true"));
             Assert.Equal(TimeSpan.FromHours(1), m.Map<string, TimeSpan>("01:00:00"));
         }
 

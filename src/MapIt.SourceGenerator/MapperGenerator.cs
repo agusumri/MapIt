@@ -108,14 +108,69 @@ namespace MapIt.SourceGenerator
                     SymbolEqualityComparer.Default.Equals(mm.ReturnType, destProp.Type));
                 if (nested != null)
                 {
-                    sb.AppendLine($"            {destVar}.{destProp.Name} = {nested.Name}({srcVar}.{srcProp.Name});");
+                    sb.AppendLine($"            {destVar}.{destProp.Name} = {srcVar}.{srcProp.Name} is null ? null : {nested.Name}({srcVar}.{srcProp.Name});");
                     continue;
+                }
+
+                // Collection: List<TSrcElem>/TSrcElem[]/IEnumerable<TSrcElem> -> List<TDestElem>/TDestElem[]
+                // where a sibling method maps the element pair.
+                if (TryGetElementType(srcProp.Type, out var srcElem) && TryGetElementType(destProp.Type, out var destElem))
+                {
+                    if (SymbolEqualityComparer.Default.Equals(srcElem, destElem))
+                    {
+                        EmitCollectionCopy(sb, destVar, destProp, srcVar, srcProp, destElem, null);
+                        continue;
+                    }
+                    var elemMethod = cls.Methods.FirstOrDefault(mm =>
+                        SymbolEqualityComparer.Default.Equals(mm.Parameter.Type, srcElem) &&
+                        SymbolEqualityComparer.Default.Equals(mm.ReturnType, destElem));
+                    if (elemMethod != null)
+                    {
+                        EmitCollectionCopy(sb, destVar, destProp, srcVar, srcProp, destElem, elemMethod.Name);
+                        continue;
+                    }
                 }
 
                 // Implicit numeric/convertible assignment attempt via cast (best effort).
                 if (IsImplicitlyConvertible(srcProp.Type, destProp.Type))
                     sb.AppendLine($"            {destVar}.{destProp.Name} = ({destProp.Type.ToDisplayString()}){srcVar}.{srcProp.Name};");
             }
+        }
+
+        private static void EmitCollectionCopy(StringBuilder sb, string destVar, IPropertySymbol destProp,
+            string srcVar, IPropertySymbol srcProp, ITypeSymbol destElem, string? elemMethod)
+        {
+            var destElemName = destElem.ToDisplayString();
+            var isArray = destProp.Type is IArrayTypeSymbol;
+            var src = $"{srcVar}.{srcProp.Name}";
+            var proj = elemMethod == null ? "__e" : $"{elemMethod}(__e)";
+            sb.AppendLine($"            if ({src} is not null)");
+            sb.AppendLine("            {");
+            sb.AppendLine($"                var __list = new global::System.Collections.Generic.List<{destElemName}>();");
+            sb.AppendLine($"                foreach (var __e in {src}) __list.Add({proj});");
+            sb.AppendLine($"                {destVar}.{destProp.Name} = __list{(isArray ? ".ToArray()" : "")};");
+            sb.AppendLine("            }");
+        }
+
+        private static bool TryGetElementType(ITypeSymbol type, out ITypeSymbol elementType)
+        {
+            elementType = null!;
+            if (type is IArrayTypeSymbol arr) { elementType = arr.ElementType; return true; }
+            if (type is INamedTypeSymbol named && named.IsGenericType)
+            {
+                var def = named.ConstructedFrom?.ToDisplayString();
+                if (def == "System.Collections.Generic.List<T>"
+                    || def == "System.Collections.Generic.IList<T>"
+                    || def == "System.Collections.Generic.ICollection<T>"
+                    || def == "System.Collections.Generic.IEnumerable<T>"
+                    || def == "System.Collections.Generic.IReadOnlyList<T>"
+                    || def == "System.Collections.Generic.IReadOnlyCollection<T>")
+                {
+                    elementType = named.TypeArguments[0];
+                    return true;
+                }
+            }
+            return false;
         }
 
         private static bool IsImplicitlyConvertible(ITypeSymbol from, ITypeSymbol to)

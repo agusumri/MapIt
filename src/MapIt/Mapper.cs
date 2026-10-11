@@ -27,7 +27,10 @@ namespace MapIt
             ConfigurationProvider = configuration;
             _config = (IGlobalConfiguration)configuration;
             _serviceCtor = serviceCtor;
+            _boundMapperFactory = ctx => new ContextBoundRuntimeMapper(this, ctx);
         }
+
+        private readonly Func<ResolutionContext, IRuntimeMapper> _boundMapperFactory;
 
         /// <summary>Gets the configuration.</summary>
         public MapperConfiguration Configuration { get; }
@@ -171,14 +174,27 @@ namespace MapIt
             MemberMap memberMap)
         {
             var runtimeSourceType = source != null ? source.GetType() : sourceType;
+
+            // Fastest path: a whole-graph compiled delegate. Only used when nothing per-call
+            // (options, interceptors, an existing destination) could change the result.
+            if (source != null && destination == null && options == null && memberMap == null && !Configuration.HasInterceptors)
+            {
+                var typeMap = _config.FindTypeMapFor(runtimeSourceType, destinationType);
+                if (typeMap != null && typeMap.SourceType == runtimeSourceType && typeMap.DestinationType == destinationType)
+                {
+                    var plan = FastPlanCompiler.GetPlan(typeMap, _config);
+                    if (plan != null && plan.CanRunPure(1))
+                        return RunPure(plan, source, sourceType, runtimeSourceType, destinationType, typeMap);
+                }
+            }
+
             var mapRequest = new MapRequest(
                 new TypePair(sourceType, destinationType),
                 new TypePair(runtimeSourceType, destinationType),
                 memberMap);
 
-            var context = new ResolutionContext(this);
-            // Nested context.Mapper.Map(...) must reuse this context.
-            context.Mapper = new ContextBoundRuntimeMapper(this, context);
+            // Nested context.Mapper.Map(...) must reuse this context; the facade is created lazily.
+            var context = new ResolutionContext(_boundMapperFactory);
 
             // Per-operation service ctor wins; else per-mapper.
             context.ServiceCtor = (options as IMappingOperationOptionsInternal)?.ServiceCtorOverride ?? _serviceCtor;
@@ -206,6 +222,34 @@ namespace MapIt
             }
 
             return MapWithContext(source, destination, runtimeSourceType, destinationType, context, mapRequest, options);
+        }
+
+        /// <summary>Creates a per-operation context for the compiled path (only when a fallback needs one).</summary>
+        internal ResolutionContext CreateFastContext() =>
+            new ResolutionContext(_boundMapperFactory) { ServiceCtor = _serviceCtor };
+
+        /// <summary>Runs a whole-graph compiled plan with the same error contract as the engine (S7).</summary>
+        private object RunPure(FastObjectPlan plan, object source, Type sourceType, Type runtimeSourceType, Type destinationType, TypeMap typeMap)
+        {
+            ResolutionContext context = null;
+            try
+            {
+                return plan.Pure(source, this, ref context, 1);
+            }
+            catch (MapItMappingException mex)
+            {
+                if (mex.Types == null) mex.Types = new TypePair(sourceType, destinationType);
+                if (mex.TypeMap == null) mex.TypeMap = typeMap;
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw new MapItMappingException("Error mapping types.", ex)
+                {
+                    Types = new TypePair(sourceType, destinationType),
+                    TypeMap = typeMap
+                };
+            }
         }
 
         /// <summary>

@@ -119,8 +119,46 @@ namespace MapIt
 
         private bool _sealed;
 
-        /// <summary>Freezes the type map against further mutation.</summary>
-        internal void Seal() => _sealed = true;
+        /// <summary>Ordered, non-ignored property maps, precomputed at seal (avoids per-map LINQ).</summary>
+        internal PropertyMap[] OrderedPropertyMaps { get; private set; } = Array.Empty<PropertyMap>();
+
+        /// <summary>Non-ignored path maps, precomputed at seal.</summary>
+        internal PathMap[] ActivePathMaps { get; private set; } = Array.Empty<PathMap>();
+
+        /// <summary>Compiled, reflection-free assignment plan for the simple members (built at seal).</summary>
+        internal CompiledMapPlan CompiledPlan { get; private set; }
+
+        /// <summary>Interpreted property maps not handled by <see cref="CompiledPlan"/>.</summary>
+        internal PropertyMap[] InterpretedPropertyMaps { get; private set; } = Array.Empty<PropertyMap>();
+
+        /// <summary>Whole-object compiled plan (null when the map is not eligible). Built lazily.</summary>
+        internal FastObjectPlan FastPlan;
+
+        /// <summary>0 = not built yet, 2 = built (FastPlan may still be null when ineligible).</summary>
+        internal volatile int FastPlanState;
+
+        /// <summary>Guards one-time plan construction.</summary>
+        internal readonly object FastPlanLock = new object();
+
+        /// <summary>Freezes the type map against further mutation and precomputes hot-path lists.</summary>
+        internal void Seal()
+        {
+            _sealed = true;
+            OrderedPropertyMaps = PropertyMaps
+                .Where(p => !p.Ignored)
+                .OrderBy(p => p.MappingOrder ?? 0)
+                .ToArray();
+            ActivePathMaps = PathMaps.Where(p => !p.Ignored).ToArray();
+
+            // Build the compiled fast-path plan unless something makes the whole-object path special.
+            if (TypeConverter == null && CustomCtor == null && ConstructorParameterMaps.Count == 0)
+            {
+                CompiledPlan = CompiledMapPlan.Build(this);
+            }
+            InterpretedPropertyMaps = CompiledPlan == null
+                ? OrderedPropertyMaps
+                : OrderedPropertyMaps.Where(p => !CompiledPlan.HandledMembers.Contains(p)).ToArray();
+        }
 
         /// <summary>Whether the type map has been sealed.</summary>
         internal bool IsSealed => _sealed;

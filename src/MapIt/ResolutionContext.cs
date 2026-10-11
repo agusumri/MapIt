@@ -13,26 +13,59 @@ namespace MapIt
         /// Gets the mapper that is performing the current mapping. Nested Map calls through this
         /// mapper reuse the current context (same instance cache + depth tracking, BEHAVIOR §7).
         /// </summary>
-        public IRuntimeMapper Mapper { get; internal set; }
+        public IRuntimeMapper Mapper
+        {
+            get
+            {
+                if (_mapper == null && _mapperFactory != null)
+                {
+                    _mapper = _mapperFactory(this);
+                    _mapperFactory = null;
+                }
+                return _mapper;
+            }
+            internal set
+            {
+                _mapper = value;
+                _mapperFactory = null;
+            }
+        }
+
+        private IRuntimeMapper _mapper;
+        private Func<ResolutionContext, IRuntimeMapper> _mapperFactory;
+        private Dictionary<string, object> _items;
+        private Dictionary<ContextCacheKey, object> _instanceCache;
+        private Dictionary<TypeMap, int> _typeMapOccurrences;
 
         /// <summary>
         /// Gets a dictionary of arbitrary user items for the current mapping operation.
+        /// Created on first access.
         /// </summary>
-        public Dictionary<string, object> Items { get; }
+        public Dictionary<string, object> Items =>
+            _items ?? (_items = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase));
 
         /// <summary>
         /// Gets the instance cache used to preserve references (avoid infinite recursion).
+        /// Created on first access.
         /// </summary>
-        public Dictionary<ContextCacheKey, object> InstanceCache { get; }
+        public Dictionary<ContextCacheKey, object> InstanceCache =>
+            _instanceCache ?? (_instanceCache = new Dictionary<ContextCacheKey, object>());
 
         /// <summary>
         /// Creates a new resolution context.
         /// </summary>
         public ResolutionContext(IRuntimeMapper mapper)
         {
-            Mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
-            Items = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-            InstanceCache = new Dictionary<ContextCacheKey, object>();
+            _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
+        }
+
+        /// <summary>
+        /// Creates a context whose <see cref="Mapper"/> is built on first access (avoids an
+        /// allocation per mapping call when no resolver needs it).
+        /// </summary>
+        internal ResolutionContext(Func<ResolutionContext, IRuntimeMapper> mapperFactory)
+        {
+            _mapperFactory = mapperFactory ?? throw new ArgumentNullException(nameof(mapperFactory));
         }
 
         /// <summary>
@@ -46,7 +79,8 @@ namespace MapIt
         /// Per-TypeMap occurrence depth along the current recursion path, used for S3 MaxDepth
         /// truncation.
         /// </summary>
-        internal Dictionary<TypeMap, int> TypeMapOccurrences { get; } = new Dictionary<TypeMap, int>();
+        internal Dictionary<TypeMap, int> TypeMapOccurrences =>
+            _typeMapOccurrences ?? (_typeMapOccurrences = new Dictionary<TypeMap, int>());
 
         /// <summary>
         /// Per-operation service constructor override (from opts.ConstructServicesUsing). When

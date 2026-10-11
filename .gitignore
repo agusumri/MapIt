@@ -30,3 +30,7 @@ Thumbs.db
 ## Internal agent task-tracking (not part of the library)
 .agents/
 .worktrees/
+
+## Local comparison benchmarks (reference third-party mappers; not published)
+bench/
+BenchmarkDotNet.Artifacts/

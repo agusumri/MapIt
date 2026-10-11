@@ -57,6 +57,25 @@ namespace MapIt
                 return typeMap.TypeConverter.Convert(source, destination, context);
             }
 
+            // Fast path: a whole-object compiled plan for plain maps into a new destination.
+            // Clone (ForceConstruct) and diff (ChangeTracker) modes need the interpreted pipeline.
+            if (typeMap != null && source != null && destination == null
+                && !context.ForceConstruct && context.ChangeTracker == null
+                && sourceType == typeMap.SourceType && destinationType == typeMap.DestinationType)
+            {
+                var plan = FastPlanCompiler.GetPlan(typeMap, configuration);
+                if (plan != null)
+                {
+                    // This object's level was already counted by Map(); the inlined graph must fit under the cap.
+                    if (plan.CanRunPure(context.CurrentDepth))
+                    {
+                        var ctx = context;
+                        return plan.Pure(source, null, ref ctx, context.CurrentDepth);
+                    }
+                    return plan.Execute(source, context);
+                }
+            }
+
             // 2. Null source
             if (source == null)
             {
@@ -147,7 +166,7 @@ namespace MapIt
             return s.IsEnum || d.IsEnum;
         }
 
-        private static bool IsComplex(Type type)
+        internal static bool IsComplex(Type type)
         {
             if (type == null) return false;
             var t = ReflectionHelper.GetUnderlyingNullableType(type);
@@ -209,19 +228,32 @@ namespace MapIt
             // Before-map actions
             RunActions(typeMap?.BeforeMapActions, source, dest, context, sourceType, destinationType);
 
-            // Map each configured member
+            // Map each configured member.
             if (typeMap != null)
             {
-                foreach (var propMap in typeMap.PropertyMaps.OfType<PropertyMap>().OrderBy(p => p.MappingOrder ?? 0))
+                // Fast path: compiled assignments for simple members, then interpret the rest.
+                // Diff/patch mode must compare values per member, so it uses the interpreted path only.
+                if (typeMap.IsSealed && context.ChangeTracker == null)
                 {
-                    if (propMap.Ignored) continue;
-                    MapProperty(configuration, source, dest, propMap, context);
+                    if (typeMap.CompiledPlan != null && source != null)
+                        typeMap.CompiledPlan.Apply(source, dest);
+                    var props = typeMap.InterpretedPropertyMaps;
+                    for (var i = 0; i < props.Length; i++)
+                        MapProperty(configuration, source, dest, props[i], context);
+                }
+                else
+                {
+                    var props = typeMap.IsSealed
+                        ? typeMap.OrderedPropertyMaps
+                        : typeMap.PropertyMaps.OfType<PropertyMap>().Where(p => !p.Ignored).OrderBy(p => p.MappingOrder ?? 0).ToArray();
+                    for (var i = 0; i < props.Length; i++)
+                        MapProperty(configuration, source, dest, props[i], context);
                 }
 
                 // Path maps
-                foreach (var pathMap in typeMap.PathMaps.OfType<PathMap>())
+                var paths = typeMap.IsSealed ? typeMap.ActivePathMaps : typeMap.PathMaps.Where(p => !p.Ignored).ToArray();
+                foreach (var pathMap in paths)
                 {
-                    if (pathMap.Ignored) continue;
                     MapPath(configuration, source, dest, pathMap, context);
                 }
             }
@@ -294,7 +326,7 @@ namespace MapIt
         }
 
         /// <summary>Maps a single property.</summary>
-        private static void MapProperty(
+        internal static void MapProperty(
             IGlobalConfiguration configuration,
             object source,
             object dest,
@@ -328,6 +360,7 @@ namespace MapIt
             // Resolve the source member chain value
             object sourceValue;
             bool hasSourceValue;
+            bool hasSourceChain;
             if (propMap.Resolver != null)
             {
                 // Resolve the source member chain first (for value converters that need it)
@@ -350,19 +383,23 @@ namespace MapIt
                     { MemberMap = propMap, TypeMap = propMap.TypeMap, Types = propMap.Types() };
                 }
                 hasSourceValue = true;
+                hasSourceChain = true;
             }
             else
             {
-                // Use explicit source members, or match by convention
+                // Use explicit source members, or match by convention. Sealed maps already have
+                // SourceMembers resolved at seal, so the reflection scan is avoided on the hot path.
                 var sourceChain = propMap.SourceMembers != null && propMap.SourceMembers.Length > 0
                     ? propMap.SourceMembers
                     : MatchSourceMember(source, sourceTypeOf(propMap), propMap.DestinationName);
                 if (sourceChain != null)
                 {
+                    hasSourceChain = true;
                     sourceValue = GetChainValue(source, sourceChain, out hasSourceValue);
                 }
                 else
                 {
+                    hasSourceChain = false;
                     hasSourceValue = false;
                     sourceValue = null;
                 }
@@ -386,11 +423,8 @@ namespace MapIt
                 return; // keep existing
             }
 
-            // Did a source chain exist (explicit, resolver, or convention)? Distinguishes
-            // "no source at all" from "source resolved to null" (§5 step 8).
-            bool hasSourceChain = propMap.Resolver != null
-                || (propMap.SourceMembers != null && propMap.SourceMembers.Length > 0)
-                || MatchSourceMember(source, sourceTypeOf(propMap), propMap.DestinationName) != null;
+            // hasSourceChain already determined during source resolution above (§5 step 8),
+            // avoiding a second reflection scan on the hot path.
 
             // §5 step 3: null substitute.
             if (sourceValue == null && propMap.NullSubstitute != null)
@@ -511,7 +545,7 @@ namespace MapIt
         }
 
         /// <summary>Maps a nested path.</summary>
-        private static void MapPath(
+        internal static void MapPath(
             IGlobalConfiguration configuration,
             object source,
             object dest,
@@ -668,7 +702,7 @@ namespace MapIt
             return existing;
         }
 
-        private static MapItMappingException CollectionBudgetExceeded(int budget, Type sourceType, Type destinationType) =>
+        internal static MapItMappingException CollectionBudgetExceeded(int budget, Type sourceType, Type destinationType) =>
             new MapItMappingException(
                 $"Collection budget of {budget} exceeded mapping {sourceType?.Name} to {destinationType?.Name}. The source collection produced more items than allowed (MaxCollectionItems).")
             { Types = new TypePair(sourceType, destinationType) };
@@ -752,17 +786,23 @@ namespace MapIt
             return destDict;
         }
 
-        /// <summary>Whether a type is a dynamic/ExpandoObject target (IDictionary&lt;string,object&gt;).</summary>
-        private static bool IsDynamic(Type type)
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, bool> _isDynamic
+            = new System.Collections.Concurrent.ConcurrentDictionary<Type, bool>();
+
+        /// <summary>Whether a type is a dynamic/ExpandoObject target (IDictionary&lt;string,object&gt;). Cached per type.</summary>
+        internal static bool IsDynamic(Type type)
         {
             if (type == null) return false;
-            if (type == typeof(System.Dynamic.ExpandoObject)) return true;
-            if (typeof(System.Dynamic.IDynamicMetaObjectProvider).IsAssignableFrom(type)) return true;
-            // IDictionary<string, object> is the ExpandoObject shape.
-            return type.GetInterfaces().Any(i => i.IsGenericType
-                && i.GetGenericTypeDefinition() == typeof(IDictionary<,>)
-                && i.GetGenericArguments()[0] == typeof(string)
-                && i.GetGenericArguments()[1] == typeof(object));
+            return _isDynamic.GetOrAdd(type, t =>
+            {
+                if (t == typeof(System.Dynamic.ExpandoObject)) return true;
+                if (typeof(System.Dynamic.IDynamicMetaObjectProvider).IsAssignableFrom(t)) return true;
+                // IDictionary<string, object> is the ExpandoObject shape.
+                return t.GetInterfaces().Any(i => i.IsGenericType
+                    && i.GetGenericTypeDefinition() == typeof(IDictionary<,>)
+                    && i.GetGenericArguments()[0] == typeof(string)
+                    && i.GetGenericArguments()[1] == typeof(object));
+            });
         }
 
         /// <summary>Maps a POCO source into a dynamic/ExpandoObject destination.</summary>
@@ -970,7 +1010,7 @@ namespace MapIt
             }
         }
 
-        private static MethodInfo FindConversionOperator(Type from, Type to)
+        internal static MethodInfo FindConversionOperator(Type from, Type to)
         {
             MethodInfo Find(Type declaring)
             {
@@ -1048,7 +1088,7 @@ namespace MapIt
         }
 
         /// <summary>Runs a list of actions (before/after map).</summary>
-        private static void RunActions(List<MapAction> actions, object source, object dest, ResolutionContext context, Type sourceType, Type destinationType)
+        internal static void RunActions(List<MapAction> actions, object source, object dest, ResolutionContext context, Type sourceType, Type destinationType)
         {
             if (actions == null) return;
             foreach (var action in actions)
