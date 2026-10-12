@@ -32,7 +32,9 @@ jobs:
         uses: github/codeql-action/init@v4
         with:
           languages: csharp
-          queries: security-and-quality
+          # Security-focused query set. (security-and-quality also flags
+          # hundreds of style/quality notes that aren't vulnerabilities.)
+          queries: security-extended
 
       - name: Build
         run: dotnet build MapIt.sln --configuration Release
