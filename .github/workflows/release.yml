@@ -52,7 +52,7 @@ jobs:
         run: dotnet pack src/MapIt.Extensions.Microsoft.DependencyInjection/MapIt.Extensions.Microsoft.DependencyInjection.csproj --configuration Release -p:Version=${{ steps.version.outputs.version }} -o ./artifacts
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: MapIt ${{ steps.version.outputs.version }}
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
